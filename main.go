@@ -12,139 +12,161 @@ import (
 var (
 	debug bool = false
 
-	ypos map[int]int
-	tab  [][]string
+	colHeap          map[int]int
+	xSize            int = 7
+	ySize            int = 6
+	maxPeacesOnBoard int = xSize * ySize
+	tab              [][]string
+	colorsMap        map[string]string
 )
 
 func start() {
-	ypos = make(map[int]int)
-	ypos[0] = 0
-	ypos[1] = 0
-	ypos[2] = 0
-	ypos[3] = 0
-	ypos[4] = 0
-	ypos[5] = 0
-	ypos[6] = 0
+	colorsMap = make(map[string]string, 2)
+	colorsMap["R"] = "RED"
+	colorsMap["Y"] = "YELLOW"
 
-	tab = make([][]string, 7)
+	colHeap = make(map[int]int)
+	for x := 0; x <= ySize-1; x++ {
+		colHeap[x] = 0
+	}
+
+	tab = make([][]string, xSize)
 	for i := range tab {
-		tab[i] = make([]string, 6)
+		tab[i] = make([]string, ySize)
 	}
 	printTab()
+}
+
+func getTurn(i int) string {
+	if i%2 == 0 {
+		return colorsMap["R"]
+	} else {
+		return colorsMap["Y"]
+	}
+}
+
+func checkInputPos(strPos string) (int, error) {
+	p := strPos[0:1]
+
+	if strings.EqualFold(p, "E") {
+		syscall.Exit(syscall.F_OK)
+	}
+
+	if strings.EqualFold(p, "\n") {
+		return -1, fmt.Errorf("please inform a column")
+	}
+
+	pos, err := strconv.Atoi(p)
+	if err != nil {
+		return -1, fmt.Errorf("invalid value: %v", err)
+	}
+
+	if pos < 1 || pos > xSize {
+		fmt.Print(" \n\n")
+		return -1, fmt.Errorf("valid values are 1, 2, 3, 4, 5, 6, 7")
+	}
+
+	// return (pos - 1) because slice in go start at 0 position
+	return (pos - 1), nil
+}
+
+func isFullBoard(piecesOnBoard int) bool {
+	return piecesOnBoard >= maxPeacesOnBoard
 }
 
 func main() {
 	start()
 	var color string
-	i := 0
+	piecesOnBoard := 0
 	for {
-		if i%2 == 0 {
-			color = "Red"
-		} else {
-			color = "Yellow"
-		}
+		color = getTurn(piecesOnBoard)
 		reader := bufio.NewReader(os.Stdin)
 
 		fmt.Printf("%s's turn  \n\n\n", color)
 		fmt.Print("Press [E] To Exit\n\n")
-		fmt.Print("Enter Position '[1-7]: ")
+		fmt.Printf("Enter Position '[1-%d]: ", xSize)
 		strPos, _ := reader.ReadString('\n')
 
-		if strings.EqualFold(strPos[0:1], "E") {
+		pos, err := checkInputPos(strPos)
+		if err != nil {
+			fmt.Printf("%v \n\n", err)
+			printTab()
+			continue
+		}
+
+		isWinner, err := insert(pos, color[0:1])
+		if err != nil {
+			continue
+		}
+
+		if isWinner {
+			fmt.Printf(">>> %s <<< is the winner\n\n", color)
+			printTab()
 			syscall.Exit(syscall.F_OK)
 		}
 
-		pos, err := strconv.Atoi(strPos[0:1])
-		if err != nil {
-			fmt.Printf("Invalid value: %v", err)
-			continue
-		}
+		piecesOnBoard++
+		fmt.Printf("Total of peaces on board: %d  \n\n", piecesOnBoard)
 
-		if pos < 1 || pos > 7 {
-			fmt.Print("valid values are 1, 2, 3, 4, 5, 6, 7 \n\n")
-			continue
-		}
-
-		err = insert((pos - 1), color[0:1])
-
-		if err != nil {
-			continue
-		}
-
-		i++
-		fmt.Printf("Total of peaces: %d  \n\n", i)
-		if i >= 42 {
+		if isFullBoard(piecesOnBoard) {
 			fmt.Println("All positions are used. There is no winner")
 			syscall.Exit(syscall.F_OK)
 		}
 	}
-
 }
 
-func insert(hpos int, color string) error {
-	if hpos < 0 || hpos >= 7 {
+func insert(hpos int, color string) (isWinner bool, err error) {
+	if hpos < 0 || hpos >= xSize {
 		fmt.Println("outside of tab...")
-		return fmt.Errorf("outside of tab")
+		return false, fmt.Errorf("outside of tab")
 	}
-	y := ypos[hpos]
+	y := colHeap[hpos]
 
-	if y == 6 {
+	if y == ySize {
 		fmt.Printf("no more space on column %d \n", hpos+1)
-		return fmt.Errorf("no more space to put in this column")
+		return false, fmt.Errorf("no more space to put in this column")
 	}
 
 	tab[hpos][y] = color
 	y++
-	ypos[hpos] = y
+	colHeap[hpos] = y
 
 	printTab()
-
-	winner, wcolor := checkWinner()
-
-	if winner {
-		fmt.Printf("%s is the winner\n\n", wcolor)
-		printTab()
-		syscall.Exit(syscall.F_OK)
-	}
-
-	return nil
+	return checkWinner(), nil
 }
 
-func checkWinner() (winner bool, color string) {
-	win, wColor := checkHorizontalLine()
+func checkWinner() (winner bool) {
+	win := checkHorizontalLine()
 	if win {
-		fmt.Printf("Winner in horizontal line - ")
-		return win, wColor
+		fmt.Printf("Winner in horizontal line: ")
+		return win
 	}
 
-	win, wColor = checkVerticalLine()
+	win = checkVerticalLine()
 	if win {
-		fmt.Printf("Winner in vertical line - ")
-		return win, wColor
+		fmt.Printf("Winner in vertical line: ")
+		return win
 	}
 
-	win, wColor = checkDiagonalLineUp()
+	win = checkDiagonalLineUp()
 	if win {
-		fmt.Printf("Winner in diagonal up line - ")
-		return win, wColor
+		fmt.Printf("Winner in diagonal up line: ")
+		return win
 	}
 
-	win, wColor = checkDiagonalLineDown()
+	win = checkDiagonalLineDown()
 	if win {
-		fmt.Printf("Winner in diagonal down line - ")
-		return win, wColor
+		fmt.Printf("Winner in diagonal down line: ")
+		return win
 	}
 
-	return win, wColor
+	return win
 }
 
-func checkDiagonalLineUp() (isWinner bool, color string) {
-	wins := false
-	wColor := ""
+func checkDiagonalLineUp() (isWinner bool) {
 	count := 0
-
-	for x := 0; x <= 6; x++ {
-		for y := 0; y <= 5; y++ {
+	for x := 0; x <= xSize-1; x++ {
+		for y := 0; y <= ySize-1; y++ {
 			value := tab[x][y]
 
 			if value == "" {
@@ -154,10 +176,10 @@ func checkDiagonalLineUp() (isWinner bool, color string) {
 
 			count++
 			npy := y
-			for npx := x + 1; npx <= 7; npx++ {
+			for npx := x + 1; npx <= xSize; npx++ {
 				npy = npy + 1
 
-				if npx > 6 || npy < 0 {
+				if npy < 0 || npx > xSize-1 {
 					count = 0
 					continue
 				}
@@ -166,7 +188,7 @@ func checkDiagonalLineUp() (isWinner bool, color string) {
 				if r {
 					count++
 					if count == 4 {
-						return true, value
+						return true
 					}
 				} else {
 					count = 0
@@ -177,16 +199,13 @@ func checkDiagonalLineUp() (isWinner bool, color string) {
 		}
 	}
 
-	return wins, wColor
+	return false
 }
 
-func checkDiagonalLineDown() (isWinner bool, color string) {
-	wins := false
-	wColor := ""
+func checkDiagonalLineDown() (isWinner bool) {
 	count := 0
-
-	for x := 0; x <= 6; x++ {
-		for y := 5; y >= 0; y-- {
+	for x := 0; x <= xSize-1; x++ {
+		for y := 5; y >= ySize-1; y-- {
 			value := tab[x][y]
 
 			if value == "" {
@@ -196,14 +215,14 @@ func checkDiagonalLineDown() (isWinner bool, color string) {
 
 			count++
 			npy := y
-			for npx := x + 1; npx <= 7; npx++ {
+			for npx := x + 1; npx <= xSize; npx++ {
 				npy = npy - 1
 
 				if debug {
 					fmt.Printf("->next value [%d,%d]", npx, npy)
 				}
 
-				if npx > 6 || npy < 0 {
+				if npy < 0 || npx > xSize-1 {
 					count = 0
 					break
 				}
@@ -212,7 +231,7 @@ func checkDiagonalLineDown() (isWinner bool, color string) {
 				if r {
 					count++
 					if count == 4 {
-						return true, value
+						return true
 					}
 				} else {
 					count = 0
@@ -223,16 +242,13 @@ func checkDiagonalLineDown() (isWinner bool, color string) {
 		}
 	}
 
-	return wins, wColor
+	return false
 }
 
-func checkVerticalLine() (isWinner bool, color string) {
-	wins := false
-	wColor := ""
+func checkVerticalLine() (isWinner bool) {
 	count := 0
-
-	for y := 0; y <= 5; y++ {
-		for x := 0; x <= 6; x++ {
+	for y := 0; y <= ySize-1; y++ {
+		for x := 0; x <= xSize-1; x++ {
 			value := tab[x][y]
 
 			if value == "" {
@@ -245,9 +261,8 @@ func checkVerticalLine() (isWinner bool, color string) {
 			}
 
 			count++
-			for npy := y + 1; npy <= 6; npy++ {
-
-				if npy > 6 || npy < 0 {
+			for npy := y + 1; npy <= ySize; npy++ {
+				if npy >= ySize || npy < 0 {
 					count = 0
 					break
 				}
@@ -256,7 +271,7 @@ func checkVerticalLine() (isWinner bool, color string) {
 				if r {
 					count++
 					if count == 4 {
-						return true, value
+						return true
 					}
 				} else {
 					count = 0
@@ -266,16 +281,14 @@ func checkVerticalLine() (isWinner bool, color string) {
 		}
 	}
 
-	return wins, wColor
+	return false
 }
 
-func checkHorizontalLine() (isWinner bool, color string) {
-	wins := false
-	wColor := ""
+func checkHorizontalLine() (isWinner bool) {
 	count := 0
 
-	for y := 0; y <= 5; y++ {
-		for x := 0; x <= 6; x++ {
+	for y := 0; y <= ySize-1; y++ {
+		for x := 0; x <= xSize-1; x++ {
 			value := tab[x][y]
 
 			if value == "" {
@@ -284,7 +297,7 @@ func checkHorizontalLine() (isWinner bool, color string) {
 			}
 
 			count++
-			for npx := x + 1; npx <= 7; npx++ {
+			for npx := x + 1; npx <= xSize; npx++ {
 
 				if npx > 6 || npx < 0 {
 					count = 0
@@ -295,7 +308,7 @@ func checkHorizontalLine() (isWinner bool, color string) {
 				if r {
 					count++
 					if count == 4 {
-						return true, value
+						return true
 					}
 				} else {
 					count = 0
@@ -305,7 +318,7 @@ func checkHorizontalLine() (isWinner bool, color string) {
 		}
 	}
 
-	return wins, wColor
+	return false
 }
 
 func checkNextPositionSameColor(x, y int, color string) bool {
@@ -313,11 +326,11 @@ func checkNextPositionSameColor(x, y int, color string) bool {
 		return false
 	}
 
-	if x < 0 || x > 6 {
+	if x < 0 || x > xSize-1 {
 		return false
 	}
 
-	if y < 0 || y > 5 {
+	if y < 0 || y > ySize-1 {
 		return false
 	}
 
@@ -333,8 +346,8 @@ func printTab() {
 	fmt.Println("|  1  ||  2  ||  3  ||  4  ||  5  ||  6  ||  7  |")
 	fmt.Println("|  |  ||  |  ||  |  ||  |  ||  |  ||  |  ||  |  |")
 	fmt.Println("|     ||     ||     ||     ||     ||     ||     |")
-	for y := 5; y >= 0; y-- {
-		for x := 0; x <= 6; x++ {
+	for y := ySize - 1; y >= 0; y-- {
+		for x := 0; x <= xSize-1; x++ {
 
 			value := tab[x][y]
 			if value == "" {
